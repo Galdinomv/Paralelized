@@ -1,0 +1,75 @@
+#  Copyright (c) 1995 by Mark Hill, James Larus, Joel Saltz, andfor 
+#  the Wisconsin Wind Tunnel Project and Joel Saltz for the High Performance 
+#  Software Laboratory, University of Maryland, College Park.
+# 
+#  ALL RIGHTS RESERVED.
+# 
+#  This software is furnished under a license and may be used and
+#  copied only in accordance with the terms of such license and the
+#  inclusion of the above copyright notice.  This software or any other
+#  copies thereof or any derivative works may not be provided or
+#  otherwise made available to any other persons.  Title to and ownership
+#  of the software is retained by Mark Hill, James Larus, Joel Saltz, and
+#  David Wood.  Any use of this software must include the above copyright notice.
+# 
+#  THIS SOFTWARE IS PROVIDED "AS IS".  THE LICENSOR MAKES NO
+#  WARRANTIES ABOUT ITS CORRECTNESS OR PERFORMANCE.
+# 
+#  Shamik Sharma generated the sequential version in C. 
+#  Shubhendu Mukherjee (Shubu) parallelized moldyn on Tempest. 
+#
+
+CM5_ROOT  = /p/cm5
+WWT_ROOT  = /p/wwt/projects/maryland/shubu/cvs
+TPPI_ROOT = $(WWT_ROOT)/tempest
+
+TEMPEST_IMPL = blizzard_e
+
+PROTOCOL = stache1024
+BLK_SIZE = 1024
+
+# Options:
+# -DDEFAULT_PARAMETERS : Default parameters hardwired in the code
+# -DPADDING32	       : Pad some structures to 32 byte blocks
+# -DNO_LOCKING	       : No locks, cyclic reduction through shared memory
+# -DLOCAL_ALLOC	       : Allocates the coordindates locally
+# -DBULK_REDUCTION     : Channels for cyclic reduction
+# -DUSE_ACK_UPDATES    : Updates with acknowledgements
+# -DUSE_NO_ACK_UPDATES : Updates without acknowledgements (could be buggy)
+# -DSTACHE_BLK_SIZE    : Block size in powers of 2 for update protocol
+# -DTIME               : Print time statistics
+# -DNO_ASSERTIONS      : No assertions
+
+# VERSIONS: (CCSM = cache coherent shared memory)
+# CCSM + locks: -DPADDING32
+# CCSM + no locks: -DPADDING32 -DNO_LOCKING (shared memory reduction)
+# CCSM + cyclic reduction: -DPADDING32 -DNO_LOCKING -DBULK_REDUCTION
+# CCSM + cyclic reduction + update protocols with acks: 
+#	-DPADDING32 -DNO_LOCKING -DBULK_REDUCTION -DUSE_ACK_UPDATES 
+
+CFLAGS = -g -O2 -DTIME -DINLINE="extern inline" \
+	 -DSTACHE_BLK_SIZE=$(BLK_SIZE) -DCYCLES_PER_SECOND=33333333  \
+	 -DNO_LOCKING -DCOORD_BISEC -DBULK_REDUCTION
+
+LDFLAGS = 
+
+VTFLAGS = 
+
+CMLDFLAGS = 
+
+CC = gcc
+
+LIBDIRS = -L/usr/psup/gcc/lib/gcc-lib/sparc-sun-sunos4.1.3/2.4.5
+LIBS = -lgcc
+
+BENCHNAME = moldyn
+BENCHROOT = /p/wwt/projects/maryland/tempest/blizzard/benchmarks.src/moldyn/ccsm0
+
+SRCDIR = .
+
+TARGET = $(BENCHNAME)
+
+default: $(TARGET)
+
+include $(SRCDIR)/blz.make.include
+

@@ -1,0 +1,78 @@
+/* Copyright (c) 1995 by Mark Hill, James Larus, Joel Saltz, andfor 
+ * the Wisconsin Wind Tunnel Project and Joel Saltz for the High Performance 
+ * Software Laboratory, University of Maryland, College Park.
+ *
+ * ALL RIGHTS RESERVED.
+ *
+ * This software is furnished under a license and may be used and
+ * copied only in accordance with the terms of such license and the
+ * inclusion of the above copyright notice.  This software or any other
+ * copies thereof or any derivative works may not be provided or
+ * otherwise made available to any other persons.  Title to and ownership
+ * of the software is retained by Mark Hill, James Larus, Joel Saltz, and
+ * David Wood.  Any use of this software must include the above copyright notice.
+ *
+ * THIS SOFTWARE IS PROVIDED "AS IS".  THE LICENSOR MAKES NO
+ * WARRANTIES ABOUT ITS CORRECTNESS OR PERFORMANCE.
+ *
+ * Shamik Sharma generated the sequential version in C. 
+ * Shubhendu Mukherjee (Shubu) parallelized moldyn on Tempest. 
+ */
+
+/*
+|| Joint project between the Wisconsin Wind Tunnel at the University of Wisconsin, 
+|| Madison and Joel Saltz's research group at the University of Maryland, College 
+|| Park.  
+||
+|| Participants: Shubu Mukherjee (*) and Shamik Sharma (!).
+||               Mark Hill (*), Jim Larus(*), Anne Rogers (%), Joel Saltz (!).
+||		 
+||		 (*) University of Wisconsin-Madison
+||		 (!) University of Maryland, College Park
+||		 (%) Princeton University
+*/
+
+#define EXTERN extern
+#include "moldyn.h"
+
+extern unsigned tot_vel;
+
+/*
+!============================================================================
+!  Function : UpdateVelocities
+!  Purpose  :
+!       Updates the velocites to take into account the 
+!       new forces between interacting molecules 
+!============================================================================
+*/
+
+void UpdateVelocities(force,vel,numMoles,timeStepSqHalf)
+     struct force_val_t *force;
+     struct val_t *vel;
+     int numMoles;
+     double timeStepSqHalf;
+{
+    int i;
+    unsigned start_time, end_time;
+    
+#ifdef TIME
+    CLOCK(start_time);
+#endif
+    
+    for (i=low_mol;i<=high_mol;i++) 
+      {
+	  force[i].x *= timeStepSqHalf;
+	  force[i].y *= timeStepSqHalf;
+	  force[i].z *= timeStepSqHalf;
+	  
+	  vel[i].x += force[i].x;
+	  vel[i].y += force[i].y;
+	  vel[i].z += force[i].z;
+      }
+    BARRIER(,XX_NUM_NODES);
+    
+#ifdef TIME
+    CLOCK(end_time);
+    tot_vel += end_time - start_time;
+#endif
+}

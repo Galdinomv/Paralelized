@@ -1,0 +1,166 @@
+/* Copyright (c) 1995 by Mark Hill, James Larus, Joel Saltz, andfor 
+ * the Wisconsin Wind Tunnel Project and Joel Saltz for the High Performance 
+ * Software Laboratory, University of Maryland, College Park.
+ *
+ * ALL RIGHTS RESERVED.
+ *
+ * This software is furnished under a license and may be used and
+ * copied only in accordance with the terms of such license and the
+ * inclusion of the above copyright notice.  This software or any other
+ * copies thereof or any derivative works may not be provided or
+ * otherwise made available to any other persons.  Title to and ownership
+ * of the software is retained by Mark Hill, James Larus, Joel Saltz, and
+ * David Wood.  Any use of this software must include the above copyright notice.
+ *
+ * THIS SOFTWARE IS PROVIDED "AS IS".  THE LICENSOR MAKES NO
+ * WARRANTIES ABOUT ITS CORRECTNESS OR PERFORMANCE.
+ *
+ * Shamik Sharma generated the sequential version in C. 
+ * Shubhendu Mukherjee (Shubu) parallelized moldyn on Tempest. 
+ */
+
+/*
+|| Joint project between the Wisconsin Wind Tunnel at the University of Wisconsin, 
+|| Madison and Joel Saltz's research group at the University of Maryland, College 
+|| Park.  
+||
+|| Participants: Shubu Mukherjee (*) and Shamik Sharma (!).
+||               Mark Hill (*), Jim Larus(*), Anne Rogers (%), Joel Saltz (!).
+||		 
+||		 (*) University of Wisconsin-Madison
+||		 (!) University of Maryland, College Park
+||		 (%) Princeton University
+*/
+
+#define EXTERN extern
+#include "moldyn.h"
+
+/*
+!============================================================================
+!  Function :  UpdateCoordinates()
+!  Purpose  : 
+!     This routine moves the molecules based on 
+!     forces acting on them and their velocities
+!============================================================================
+*/
+
+extern unsigned tot_coord;
+
+void UpdateCoordinates(coord,vel,force,side,iter)
+     struct val_t *coord, *vel;
+     struct force_val_t *force;
+     double side; 
+     int iter;
+{
+    int i, num, num_bytes;
+    unsigned start_time, end_time;
+    
+#ifdef TIME
+    CLOCK(start_time);
+#endif
+    
+    num = high_mol - low_mol + 1;
+    num_bytes = sizeof(struct val_t) * num;
+    
+    /* 
+     * Do not send updates in the first iteration, or in the iteration
+     * just after the new intereaction list is built. 
+     */
+    if (iter != 0 && iter % neighUpdate != 1)
+      {
+	  
+#ifdef USE_NOACK_UPDATES
+	  set_number_updates(num_updates);
+#endif
+	  
+#if (defined(USE_ACK_UPDATES) || (defined(USE_NOACK_UPDATES)))
+	  for (addr = (unsigned)(&coord[low_mol]); 
+	       addr <= (unsigned)(&coord[high_mol]); 
+	       addr += STACHE_BLK_SIZE)
+	    mark_writable((void *)addr, STACHE_BLK_SIZE);
+	  
+	  addr = (unsigned)(&coord[low_mol]);
+	  blksize = 0;
+#endif
+	  
+	  for (i=low_mol; i<=high_mol; i++) 
+	    {
+		coord[i].x += vel[i].x + force[i].x;
+		coord[i].y += vel[i].y + force[i].y;
+		coord[i].z += vel[i].z + force[i].z;
+		
+		if (coord[i].x < 0.0 ) coord[i].x += side ;
+		if (coord[i].x > side) coord[i].x -= side ;
+		
+		if (coord[i].y < 0.0 ) coord[i].y += side ;
+		if (coord[i].y > side) coord[i].y -= side ;
+		
+		if (coord[i].z < 0.0 ) coord[i].z += side ;
+		if (coord[i].z > side) coord[i].z -= side ;
+		
+		vel[i].x += force[i].x;
+		vel[i].y += force[i].y;
+		vel[i].z += force[i].z;
+		
+		force[i].x = 0.0;
+		force[i].y = 0.0;
+		force[i].z = 0.0;
+	    }
+	  
+	  BARRIER(,XX_NUM_NODES);
+	  
+#if (defined(USE_ACK_UPDATES) || (defined(USE_NOACK_UPDATES)))
+	  
+	  for (i=low_mol; i<=high_mol; i++) 
+	    {
+		blksize += sizeof(struct val_t);
+		if (blksize == STACHE_BLK_SIZE)
+		  {
+		      send_block_update((void *)addr);
+		      addr += blksize;
+		      blksize = 0;
+		  }
+	    }
+#endif
+	  
+#if (defined(USE_ACK_UPDATES) || (defined(USE_NOACK_UPDATES)))
+	  
+	  update_spin();
+	  
+#endif
+	  
+      }
+    else
+      {
+	  for (i=low_mol; i<=high_mol; i++) 
+	    {
+		coord[i].x += vel[i].x + force[i].x;
+		coord[i].y += vel[i].y + force[i].y;
+		coord[i].z += vel[i].z + force[i].z;
+		
+		if (coord[i].x < 0.0 ) coord[i].x += side ;
+		if (coord[i].x > side) coord[i].x -= side ;
+		
+		if (coord[i].y < 0.0 ) coord[i].y += side ;
+		if (coord[i].y > side) coord[i].y -= side ;
+
+		if (coord[i].z < 0.0 ) coord[i].z += side ;
+		if (coord[i].z > side) coord[i].z -= side ;
+		
+		vel[i].x += force[i].x;
+		vel[i].y += force[i].y;
+		vel[i].z += force[i].z;
+		
+		force[i].x = 0.0;
+		force[i].y = 0.0;
+		force[i].z = 0.0;
+	    } 
+      }
+    
+    BARRIER(,XX_NUM_NODES);
+    
+#ifdef TIME
+    CLOCK(end_time);
+    tot_coord += end_time - start_time;
+#endif
+}

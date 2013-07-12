@@ -1,0 +1,6 @@
+CAUTION:
+
+Report only the parallel time.  We have not optimized the sequential startup code.
+
+-Shubu /SSM/
+January 16, 1995.

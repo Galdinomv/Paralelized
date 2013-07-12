@@ -1,0 +1,219 @@
+/* Copyright (c) 1995 by Mark Hill, James Larus, Joel Saltz, andfor 
+ * the Wisconsin Wind Tunnel Project and Joel Saltz for the High Performance 
+ * Software Laboratory, University of Maryland, College Park.
+ *
+ * ALL RIGHTS RESERVED.
+ *
+ * This software is furnished under a license and may be used and
+ * copied only in accordance with the terms of such license and the
+ * inclusion of the above copyright notice.  This software or any other
+ * copies thereof or any derivative works may not be provided or
+ * otherwise made available to any other persons.  Title to and ownership
+ * of the software is retained by Mark Hill, James Larus, Joel Saltz, and
+ * David Wood.  Any use of this software must include the above copyright notice.
+ *
+ * THIS SOFTWARE IS PROVIDED "AS IS".  THE LICENSOR MAKES NO
+ * WARRANTIES ABOUT ITS CORRECTNESS OR PERFORMANCE.
+ *
+ * Shamik Sharma generated the sequential version in C. 
+ * Shubhendu Mukherjee (Shubu) parallelized moldyn on Tempest. 
+ */
+
+/*
+|| Joint project between the Wisconsin Wind Tunnel at the University of Wisconsin, 
+|| Madison and Joel Saltz's research group at the University of Maryland, College 
+|| Park.  
+||
+|| Participants: Shubu Mukherjee (*) and Shamik Sharma (!).
+||               Mark Hill (*), Jim Larus(*), Anne Rogers (%), Joel Saltz (!).
+||		 
+||		 (*) University of Wisconsin-Madison
+||		 (!) University of Maryland, College Park
+||		 (%) Princeton University
+*/
+
+#define EXTERN extern
+#include "moldyn.h"
+
+extern unsigned tot_neigh;
+
+/*
+!============================================================================
+!  Function :  BuildNeigh()
+!  Purpose  : 
+!     This routine is called after every x timesteps
+!     to  rebuild the list of interacting molecules
+!     Note that molecules within cutoffRad*TOLERANCE
+!     are included. This tolerance is in order to allow
+!     for molecules that might move within range
+!     during the computation.
+!============================================================================
+*/
+
+#define gen_local_interaction(i, j) \
+{\
+    rd = Foo(coord[i].x, coord[i].y, coord[i].z,\
+	     coord[j].x, coord[j].y, coord[j].z,\
+	     side, sideHalf);\
+    if (rd <= cutoffSquare)\
+      {\
+	  local_num_interact++;\
+	  if (local_num_interact >= maxinteract)\
+	    fatal_error("MAXINTERACT limit");\
+	  inter_local[local_num_interact].left  = i;\
+	  inter_local[local_num_interact].right = j;\
+	  assert(i != j);\
+	  num_local_interactions++;\
+      }\
+}
+
+#define gen_interaction(i, j) \
+{\
+    rd = Foo(coord[i].x, coord[i].y, coord[i].z,\
+	     coord[j].x, coord[j].y, coord[j].z,\
+	     side, sideHalf);\
+    if (rd <= cutoffSquare)\
+      {\
+	  local_num_interact++;\
+	  if (local_num_interact >= maxinteract)\
+	    fatal_error("MAXINTERACT limit");\
+	  inter_local[local_num_interact].left  = i;\
+	  inter_local[local_num_interact].right = j;\
+	  assert(i != j);\
+      }\
+}
+
+void BuildNeigh(struct inter_t * inter, 
+		struct inter_t *inter_local, 
+		int numMoles, 
+		struct val_t *coord, 
+		double side,  
+		double cutoffRadius)
+{
+    double rd, cutoffSquare, sideHalf, Foo();
+    int i, j, global_start_pos, pair;
+    unsigned start_time, end_time;
+    int num_local_interactions;
+    
+#ifdef TIME
+    CLOCK(start_time);
+#endif
+    
+
+    sideHalf      = side * 0.5 ;
+    cutoffSquare  = (cutoffRadius * TOLERANCE)*(cutoffRadius * TOLERANCE); 
+    local_num_interact = -1;
+
+    num_local_interactions = 0;
+    /* local interactions */
+    for (i = low_node[XX_NODE_NUMBER]; 
+	 i <= high_node[XX_NODE_NUMBER];
+	 i++)
+      {
+	  for (j = i + 1; j <= high_node[XX_NODE_NUMBER]; j++)
+	    {
+		gen_local_interaction(i, j);
+	    }
+      }
+
+    /* remote interactions */	    
+    for (pair = 0; pair < remote_pairs[XX_NODE_NUMBER].num; pair++)
+      {
+	  int p = remote_pairs[XX_NODE_NUMBER].pairs[pair];
+	  
+	  for (i = low_node[XX_NODE_NUMBER];	
+	       i <= high_node[XX_NODE_NUMBER];
+	       i++)
+	    {
+		for (j = low_node[p]; j <= high_node[p]; j++)
+		  {
+		      gen_interaction(i, j);
+		  } 
+	    }
+      }
+    
+    local_num_interact++;
+    tot_interact[XX_NODE_NUMBER] = local_num_interact;
+    
+    BARRIER(,XX_NUM_NODES);
+
+    global_start_pos = 0;
+    for (i = 0; i < XX_NODE_NUMBER; i++)
+      {
+	  global_start_pos += tot_interact[i];
+      }
+    
+    low_interaction = global_start_pos;
+    high_local_interaction = low_interaction + num_local_interactions;
+    high_interaction = global_start_pos + tot_interact[XX_NODE_NUMBER] - 1;
+    
+    /* update global queue */
+    for (i = 0, j = global_start_pos; 
+	 i < local_num_interact; i++, j++)
+      inter[j] = inter_local[i];
+    
+    if (XX_NODE_NUMBER == XX_NUM_NODES-1)
+      {
+	  global->num_interact = (global_start_pos + 
+				  tot_interact[XX_NODE_NUMBER]);
+	  assert(global->num_interact <= maxinteract);
+      }
+    
+    BARRIER(,XX_NUM_NODES);  
+
+#ifdef TIME
+    CLOCK(end_time);
+    tot_neigh += end_time - start_time;
+#endif
+
+    BARRIER(,XX_NUM_NODES);  	
+#ifdef DUMP_MESH_STATS
+    dump_mesh_stats(global->num_interact, inter, inter_index);
+#endif
+}
+
+void BuildNeighOne(struct inter_t *inter, 
+		   int numMoles,
+		   struct val_t *coord,
+		   double side, 
+		   double cutoffRadius)
+{
+    double rd, cutoffSquare, sideHalf, Foo();
+    int i,j;
+    unsigned start_time, end_time;
+    
+#ifdef TIME
+    CLOCK(start_time);
+#endif
+    
+    if (XX_NODE_NUMBER == 0)
+      global->num_interact = -1;
+    
+    sideHalf      = side * 0.5 ;
+    cutoffSquare  = (cutoffRadius * TOLERANCE)*(cutoffRadius * TOLERANCE); 
+    
+    for ( i=low_mol; i<=high_mol; i++) {
+	for (j=i+1; j<numMoles; j++ ) {
+	    rd = Foo(coord[i].x, coord[i].y, coord[i].z,
+		     coord[j].x, coord[j].y, coord[j].z,
+		     side, sideHalf); 
+	    
+	    if ( rd <= cutoffSquare) {
+		int num;
+		num = ++global->num_interact;   
+		if ( num >= maxinteract) perror("MAXINTERACT limit");
+		inter[num].left  = i;
+		inter[num].right = j;
+		assert(i != j);
+	    }  
+	} 
+    }
+    
+    if (XX_NODE_NUMBER == 0)
+      ++global->num_interact;
+    
+#ifdef TIME
+    CLOCK(end_time);
+    tot_neigh += end_time - start_time;
+#endif
+}

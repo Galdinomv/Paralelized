@@ -1,0 +1,40 @@
+#  Copyright (c) 1995 by Mark Hill, James Larus, and David Wood for 
+#  the Wisconsin Wind Tunnel Project and Joel Saltz for the High Performance 
+#  Software Laboratory, University of Maryland, College Park.
+# 
+#  ALL RIGHTS RESERVED.
+# 
+#  This software is furnished under a license and may be used and
+#  copied only in accordance with the terms of such license and the
+#  inclusion of the above copyright notice.  This software or any other
+#  copies thereof or any derivative works may not be provided or
+#  otherwise made available to any other persons.  Title to and ownership
+#  of the software is retained by Mark Hill, James Larus, and David Wood.
+#  Any use of this software must include the above copyright notice.
+# 
+#  THIS SOFTWARE IS PROVIDED "AS IS".  THE LICENSOR MAKES NO
+#  WARRANTIES ABOUT ITS CORRECTNESS OR PERFORMANCE.
+# 
+#  Shamik Sharma generated the sequential version in C. 
+#  Shubhendu Mukherjee (Shubu) parallelized moldyn on Tempest. 
+#
+
+
+Different ordering of floating point operations due to different
+optimization levels with gcc can generate slightly different answers
+for this code.  One problem I encountered was with sum in ComputeKE.
+gcc reorders floating point instructions with -O2 resulting in a
+slight difference in the output.  I encountered the following output
+with one iteration. 
+
+With -g -O2:
+
+    0    2216.2646  -14174.5956  -11958.3310   0.7218  -6.0888   0.1957  46.9
+
+With -g: 
+
+    0    2216.2638  -14174.5956  -11958.3318   0.7218  -6.0888   0.1957  46.9
+
+-Shubu /SSM/
+June 24, 1994
+

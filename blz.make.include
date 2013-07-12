@@ -1,0 +1,107 @@
+#  Copyright (c) 1995 by Mark Hill, James Larus, Joel Saltz, andfor 
+#  the Wisconsin Wind Tunnel Project and Joel Saltz for the High Performance 
+#  Software Laboratory, University of Maryland, College Park.
+# 
+#  ALL RIGHTS RESERVED.
+# 
+#  This software is furnished under a license and may be used and
+#  copied only in accordance with the terms of such license and the
+#  inclusion of the above copyright notice.  This software or any other
+#  copies thereof or any derivative works may not be provided or
+#  otherwise made available to any other persons.  Title to and ownership
+#  of the software is retained by Mark Hill, James Larus, Joel Saltz, and
+#  David Wood.  Any use of this software must include the above copyright notice.
+# 
+#  THIS SOFTWARE IS PROVIDED "AS IS".  THE LICENSOR MAKES NO
+#  WARRANTIES ABOUT ITS CORRECTNESS OR PERFORMANCE.
+# 
+#  Shamik Sharma generated the sequential version in C. 
+#  Shubhendu Mukherjee (Shubu) parallelized moldyn on Tempest. 
+#
+
+.KEEP_STATE:
+
+CFLAGS += 
+
+CMLD = $(CM5_ROOT)/usr/bin/cmld
+
+WWTLIB_DIR = $(TPPI_ROOT)/lib/cm5
+
+INC = -I$(TPPI_ROOT)/include/cm5/$(TEMPEST_IMPL) -I$(TPPI_ROOT)/include/cm5 \
+      -I$(TPPI_ROOT)/include/prot/stache -I$(TPPI_ROOT)/include/cm5/utils \
+      -I$(TPPI_ROOT)/include/prot/utils \
+      -I$(TPPI_ROOT)/include/utils \
+      -I$(TPPI_ROOT)/include/cm5/$(TEMPEST_IMPL)/utils
+
+CFLAGS += -DWWT -DBLZ -DNO_FORK_SEMANTICS $(INC) -DNO_ASSERTIONS
+LDFLAGS += -n -dc -dp -e __wwt_startup_ -X 
+
+LIBDIRS += -L$(WWTLIB_DIR) -L$(WWTLIB_DIR)/$(TEMPEST_IMPL) -L/p/wwt/lib
+SP_LIBS += -ltempest_sp -l$(PROTOCOL)_sp -lcmna_sp -lm -lc
+PE_LIBS += -lutils_pe -ltempest_pe -l$(PROTOCOL)_pe -ltempest_pe -lcmna_pe -lm -lc
+
+OBJS = moldyn.o coord.o force.o init.o neigh.o print.o verify.o vel.o stats.o \
+       bisec.o
+
+#==============
+# PARMACS stuff
+#==============
+MACDIR = $(TPPI_ROOT)/lib/cm5/$(TEMPEST_IMPL)
+MACROS = $(MACDIR)/c.m4.local $(MACDIR)/c.m4.monmacs $(MACDIR)/c.m4.smacs
+#==============
+
+.SUFFIXES:
+.SUFFIXES: .o .c .U .h .H
+
+%.o: %.c
+	$(CC) -c $(CFLAGS) $*.c
+
+%.o: $(SRCDIR)/%.c
+	$(CC) -c $(CFLAGS) $(SRCDIR)/$*.c
+
+%.c: %.U
+	m4 $(MACROS) $*.U > $*.c
+
+%.c: $(SRCDIR)/%.U
+	m4 $(MACROS) $(SRCDIR)/$*.U > $*.c
+
+%.h: %.H
+	m4 $(MACROS) $*.H > $*.h
+
+%.h: $(SRCDIR)/%.H
+	m4 $(MACROS) $(SRCDIR)/$*.H > $*.h
+
+$(TARGET): $(OBJS)
+	$(CMLD) $(CMLDFLAGS) -gcc -o $(TARGET) $(LIBDIRS) $(SP_LIBS)  \
+	 -pe $(OBJS) $(LIBDIRS) $(PE_LIBS)
+
+rmtarget:
+	rm -f $(TARGETDIR)/$(TARGET) $(TARGETDIR)/$(TARGET).Z
+
+install: $(TARGET)
+	cp $(TARGET).Z $(TARGETDIR)
+
+
+moldyn.o:   moldyn.c moldyn.h 
+coord.o:    coord.c  moldyn.h
+force.o:    force.c  moldyn.h
+init.o:     init.c   moldyn.h
+neigh.o:    neigh.c  moldyn.h
+print.o:    print.c  moldyn.h
+verify.o:   verify.c moldyn.h
+vel.o:      vel.c    moldyn.h
+stats.o:    stats.c  moldyn.h
+bisec.o:    bisec.c  moldyn.h
+
+clean:
+	/bin/rm -f $(TARGET) $(TARGET).Z *.[coh] $(TARGET).no-vt   
+
+	
+run:
+	/bin/rm -f CM* submit.o*
+	jsub submit
+	jstat | grep shubu
+
+tags:
+	etags *.[UH]
+

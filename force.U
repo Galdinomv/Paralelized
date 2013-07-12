@@ -1,0 +1,625 @@
+/* Copyright (c) 1995 by Mark Hill, James Larus, Joel Saltz, andfor 
+ * the Wisconsin Wind Tunnel Project and Joel Saltz for the High Performance 
+ * Software Laboratory, University of Maryland, College Park.
+ *
+ * ALL RIGHTS RESERVED.
+ *
+ * This software is furnished under a license and may be used and
+ * copied only in accordance with the terms of such license and the
+ * inclusion of the above copyright notice.  This software or any other
+ * copies thereof or any derivative works may not be provided or
+ * otherwise made available to any other persons.  Title to and ownership
+ * of the software is retained by Mark Hill, James Larus, Joel Saltz, and
+ * David Wood.  Any use of this software must include the above copyright notice.
+ *
+ * THIS SOFTWARE IS PROVIDED "AS IS".  THE LICENSOR MAKES NO
+ * WARRANTIES ABOUT ITS CORRECTNESS OR PERFORMANCE.
+ *
+ * Shamik Sharma generated the sequential version in C. 
+ * Shubhendu Mukherjee (Shubu) parallelized moldyn on Tempest. 
+ */
+
+/*
+|| Joint project between the Wisconsin Wind Tunnel at the University of Wisconsin, 
+|| Madison and Joel Saltz's research group at the University of Maryland, College 
+|| Park.  
+||
+|| Participants: Shubu Mukherjee (*) and Shamik Sharma (!).
+||               Mark Hill (*), Jim Larus(*), Anne Rogers (%), Joel Saltz (!).
+||		 
+||		 (*) University of Wisconsin-Madison
+||		 (!) University of Maryland, College Park
+||		 (%) Princeton University
+*/
+
+#define EXTERN extern
+#include "moldyn.h"
+
+extern unsigned tot_force, tot_reduce;
+
+/*
+!============================================================================
+! Function :  ComputeForces
+! Purpose  :
+!   This is the most compute-intensive portion.
+!   The routine iterates over all interacting  pairs
+!   of molecules and checks if they are still within
+!   inteacting range. If they are, the force on
+!   each  molecule due to the other is calculated.
+!   The net potential energy and the net virial
+!   energy is also computed.
+!============================================================================
+*/
+
+#ifndef NO_LOCKING
+void ComputeForces(struct force_val_t *f,
+		   double *vir,
+		   double *epot,
+		   int numMoles,
+		   struct val_t *coord,
+		   double side,
+		   double cutoffRadius,
+		   int ninter,
+		   struct inter_t *inter,
+		   int update_flag)
+{
+    double sideHalf, cutoffSquare, forcex, forcey, forcez, vir_tmp, epot_tmp;
+    double xx, yy, zz, rd, rrd, rrd2, rrd3, rrd4, rrd6, rrd7, r148;
+    int    i, j, ii;
+    unsigned start_time, end_time;
+    
+#ifdef TIME
+    CLOCK(start_time);
+#endif
+    
+    sideHalf  = 0.5*side ;
+    cutoffSquare = cutoffRadius*cutoffRadius ;
+    
+    vir_tmp  = 0.0 ;
+    epot_tmp = 0.0;
+
+#ifdef LOCK_OPT
+    /* break the loop into two parts */
+    for(ii = low_interaction; ii <= high_local_interaction; ii++) 
+      {
+	  i = inter[ii].left;
+	  j = inter[ii].right;
+	  
+#ifdef USE_NOACK_UPDATES
+	  if (update_flag)
+	    {
+		coord_local[i] = 1;
+		coord_local[j] = 1;
+	    }
+#endif
+	  
+	  xx = coord[i].x - coord[j].x;
+	  yy = coord[i].y - coord[j].y;
+	  zz = coord[i].z - coord[j].z;
+	  
+	  if (xx < -sideHalf) xx += side;
+	  if (yy < -sideHalf) yy += side;
+	  if (zz < -sideHalf) zz += side;
+	  if (xx > sideHalf)  xx -= side;
+	  if (yy > sideHalf)  yy -= side;
+	  if (zz > sideHalf)  zz -= side;
+	  rd = (xx*xx + yy*yy + zz*zz);
+	  
+	  assert(rd != 0);
+	  if (rd < cutoffSquare) 
+	    {
+		rrd   = 1.0/rd;          
+		rrd2  = rrd*rrd ;       
+		rrd3  = rrd2*rrd ;
+		rrd4  = rrd2*rrd2 ;
+		rrd6  = rrd2*rrd4;
+		rrd7  = rrd6*rrd ;
+		r148  = rrd7 - 0.5 * rrd4 ;
+		
+		forcex = xx*r148;
+		forcey = yy*r148;
+		forcez = zz*r148;
+		
+		f[i].x += forcex;
+		f[i].y += forcey;
+		f[i].z += forcez;
+		
+		f[j].x -= forcex;
+		f[j].y -= forcey;
+		f[j].z -= forcez;
+		
+		vir_tmp  -= rd*r148 ;
+		epot_tmp += (rrd6 - rrd3);
+	    }
+      } 
+
+
+    BARRIER(,XX_NUM_NODES);
+
+    for(ii = high_local_interaction + 1; ii <= high_interaction; ii++) 
+#else
+    for(ii = low_interaction; ii <= high_interaction; ii++) 
+#endif LOCK_OPT
+      {
+	  i = inter[ii].left;
+	  j = inter[ii].right;
+	  
+#ifdef USE_NOACK_UPDATES
+	  if (update_flag)
+	    {
+		coord_local[i] = 1;
+		coord_local[j] = 1;
+	    }
+#endif
+	  
+	  xx = coord[i].x - coord[j].x;
+	  yy = coord[i].y - coord[j].y;
+	  zz = coord[i].z - coord[j].z;
+	  
+	  if (xx < -sideHalf) xx += side;
+	  if (yy < -sideHalf) yy += side;
+	  if (zz < -sideHalf) zz += side;
+	  if (xx > sideHalf)  xx -= side;
+	  if (yy > sideHalf)  yy -= side;
+	  if (zz > sideHalf)  zz -= side;
+	  rd = (xx*xx + yy*yy + zz*zz);
+	  
+	  assert(rd != 0);
+	  if (rd < cutoffSquare) 
+	    {
+		rrd   = 1.0/rd;          
+		rrd2  = rrd*rrd ;       
+		rrd3  = rrd2*rrd ;
+		rrd4  = rrd2*rrd2 ;
+		rrd6  = rrd2*rrd4;
+		rrd7  = rrd6*rrd ;
+		r148  = rrd7 - 0.5 * rrd4 ;
+		
+		forcex = xx*r148;
+		forcey = yy*r148;
+		forcez = zz*r148;
+		
+		ALOCK(global->force_lock, i);
+		
+		f[i].x += forcex;
+		f[i].y += forcey;
+		f[i].z += forcez;
+		
+		AULOCK(global->force_lock, i);
+		
+
+		ALOCK(global->force_lock, j);      
+		
+		f[j].x -= forcex;
+		f[j].y -= forcey;
+		f[j].z -= forcez;
+		
+		AULOCK(global->force_lock, j);      
+		
+		vir_tmp  -= rd*r148 ;
+		epot_tmp += (rrd6 - rrd3);
+	    }
+      } 
+    
+    *vir  = vir_tmp ;
+    *epot = epot_tmp;
+    
+#ifdef USE_NOACK_UPDATES
+    if (update_flag)
+      compute_num_updates(coord_local);
+#endif
+    
+    BARRIER(,XX_NUM_NODES);
+    
+#ifdef TIME
+    CLOCK(end_time);
+    tot_force += end_time - start_time;
+#endif
+}
+
+#else
+
+void ComputeForces(struct force_val_t *f,
+		   double *vir,
+		   double *epot,
+		   int numMoles,
+		   struct val_t *coord,
+		   double side,
+		   double cutoffRadius,
+		   int ninter,
+		   struct inter_t *inter,
+		   int update_flag)
+{
+    double sideHalf, cutoffSquare, forcex, forcey, forcez, vir_tmp, epot_tmp;
+    double xx, yy, zz, rd, rrd, rrd2, rrd3, rrd4, rrd6, rrd7, r148;
+    int    i, j, ii;
+    unsigned start_time, end_time;
+    
+#ifdef TIME
+    CLOCK(start_time);
+#endif
+    
+    sideHalf  = 0.5*side ;
+    cutoffSquare = cutoffRadius*cutoffRadius ;
+    
+    vir_tmp  = 0.0 ;
+    epot_tmp = 0.0;
+
+    for(ii = low_interaction; ii <= high_interaction; ii++) 
+      {
+	  i = inter[ii].left;
+	  j = inter[ii].right;
+	  
+#ifdef USE_NOACK_UPDATES
+	  if (update_flag)
+	    {
+		coord_local[i] = 1;
+		coord_local[j] = 1;
+	    }
+#endif
+	  
+	  xx = coord[i].x - coord[j].x;
+	  yy = coord[i].y - coord[j].y;
+	  zz = coord[i].z - coord[j].z;
+	  
+	  if (xx < -sideHalf) xx += side;
+	  if (yy < -sideHalf) yy += side;
+	  if (zz < -sideHalf) zz += side;
+	  if (xx > sideHalf)  xx -= side;
+	  if (yy > sideHalf)  yy -= side;
+	  if (zz > sideHalf)  zz -= side;
+	  rd = (xx*xx + yy*yy + zz*zz);
+	  
+	  assert(rd != 0);
+	  if (rd < cutoffSquare) 
+	    {
+		rrd   = 1.0/rd;          
+		rrd2  = rrd*rrd ;       
+		rrd3  = rrd2*rrd ;
+		rrd4  = rrd2*rrd2 ;
+		rrd6  = rrd2*rrd4;
+		rrd7  = rrd6*rrd ;
+		r148  = rrd7 - 0.5 * rrd4 ;
+		
+		forcex = xx*r148;
+		forcey = yy*r148;
+		forcez = zz*r148;
+		
+		f[i].x += forcex;
+		f[i].y += forcey;
+		f[i].z += forcez;
+		
+		f[j].x -= forcex;
+		f[j].y -= forcey;
+		f[j].z -= forcez;
+		
+		vir_tmp  -= rd*r148 ;
+		epot_tmp += (rrd6 - rrd3);
+	    }
+      } 
+    
+    *vir  = vir_tmp ;
+    *epot = epot_tmp;
+    
+#ifdef USE_NOACK_UPDATES
+    if (update_flag)
+      compute_num_updates(coord_local);
+#endif
+    
+    BARRIER(,XX_NUM_NODES);
+    
+#ifdef TIME
+    CLOCK(end_time);
+    tot_force += end_time - start_time;
+#endif
+}
+#endif NO_LOCKING
+
+void ComputeForcesOne(struct force_val_t *f,
+		      double *vir,
+		      double *epot,
+		      int numMoles,
+		      struct val_t *coord,
+		      double side,
+		      double cutoffRadius,
+		      int ninter,
+		      struct inter_t *inter)
+{
+    double sideHalf, cutoffSquare;
+    double xx, yy, zz, rd, rrd, rrd2, rrd3, rrd4, rrd6, rrd7, r148;
+    double forcex, forcey, forcez, vir_tmp, epot_tmp;
+    int    i, j, ii, low_inter, high_inter;
+    unsigned start_time, end_time;
+    
+#ifdef TIME
+    CLOCK(start_time);
+#endif	
+    
+    sideHalf  = 0.5*side ;
+    cutoffSquare = cutoffRadius*cutoffRadius ;
+    
+    vir_tmp  = 0.0 ;
+    epot_tmp = 0.0;
+
+    low_inter = low_index(ninter, XX_NODE_NUMBER);
+    high_inter = high_index(ninter, XX_NODE_NUMBER);
+
+    for(ii = low_inter; ii <= high_inter; ii++) 
+      {    
+	  i = inter[ii].left;
+	  j = inter[ii].right;
+	  
+	  xx = coord[i].x - coord[j].x;
+	  yy = coord[i].y - coord[j].y;
+	  zz = coord[i].z - coord[j].z;
+	  
+	  if (xx < -sideHalf) xx += side;
+	  if (yy < -sideHalf) yy += side;
+	  if (zz < -sideHalf) zz += side;
+	  if (xx > sideHalf) xx -= side;
+	  if (yy > sideHalf) yy -= side;
+	  if (zz > sideHalf) zz -= side;
+	  rd = (xx*xx + yy*yy + zz*zz);
+	  
+	  assert(rd != 0);
+	  if (rd < cutoffSquare) 
+	    {
+		rrd   = 1.0/rd;          
+		rrd2  = rrd*rrd ;       
+		rrd3  = rrd2*rrd ;
+		rrd4  = rrd2*rrd2 ;
+		rrd6  = rrd2*rrd4;
+		rrd7  = rrd6*rrd ;
+		r148  = rrd7 - 0.5 * rrd4 ;
+		
+		forcex = xx*r148;
+		forcey = yy*r148;
+		forcez = zz*r148;
+		
+		f[i].x += forcex;
+		f[i].y += forcey;
+		f[i].z += forcez;
+		
+		f[j].x -= forcex;
+		f[j].y -= forcey;
+		f[j].z -= forcez;
+		
+		vir_tmp  -= rd*r148 ;
+		epot_tmp += (rrd6 - rrd3);
+	    }
+      } 
+    
+    *vir  = vir_tmp ;
+    *epot = epot_tmp;
+    
+#ifdef TIME
+    CLOCK(end_time);
+    tot_force += end_time - start_time;
+#endif
+}
+
+#ifdef BULK_REDUCTION
+/* NOTE: have to pad force array to make it a multiple of XX_NUM_NODES */
+/* NOTE: CANNOT call malloc within this procedure */
+int send_channel_id = -1;
+volatile int recv_channel_id = -1;
+int next_proc, prev_proc;
+struct force_val_t *recv_buffer;
+
+void dummyfn() {}
+     
+     volatile int send_done_flag = 0;
+     volatile int set_channel_size_flag = 0;
+     
+     void sendfn()
+{
+    TPPI_wakeup(&send_done_flag);
+}
+
+void _NI_setup_dst(int src)
+{
+    recv_channel_id= TPPI_recv_W();
+    TPPI_set_channel_dst_notify(src, recv_channel_id, (void *)recv_buffer, 0, 
+				(void *)dummyfn);
+}
+
+void set_channel(int dst)
+{
+    send_channel_id = TPPI_set_channel_src(dst, (void *)sendfn);
+    TPPI_send_W(dst, (void *)_NI_setup_dst, send_channel_id);
+    while(!TPPI_is_channel_estd(dst, send_channel_id));
+}
+
+void SetupChannels(int num_particles)
+{
+    /* one you receive data from */
+    prev_proc = (XX_NODE_NUMBER + 1) % XX_NUM_NODES;
+    
+    /* one you send data to */
+    next_proc = (XX_NODE_NUMBER - 1 < 0) ? (XX_NUM_NODES-1) 
+      : (XX_NODE_NUMBER - 1);
+    
+    recv_buffer = (struct force_val_t *)local_malloc(sizeof(struct force_val_t) 
+						     * num_particles);
+    
+    BARRIER(,XX_NUM_NODES);
+    
+    /* sets send_channel_id, recv_channel_id, recv_buffer */
+    set_channel(next_proc);	
+    
+    BARRIER(,XX_NUM_NODES);
+}
+
+void _NI_set_channel_size_ack()
+{
+    TPPI_recv_W(); /* pop the first word */
+    TPPI_wakeup(&set_channel_size_flag);
+}
+
+void _NI_set_channel_size(int src)
+{
+    int chn_id = TPPI_recv_W();
+    int bytes = TPPI_recv_W();
+    TPPI_set_channel_dst(src, chn_id, (void *)recv_buffer, bytes, 
+			 (void *)dummyfn); 
+    TPPI_send_W(src, (void *)_NI_set_channel_size_ack, 0);
+}
+
+void set_channel_size(int proc, int id, int bytes)
+{
+    TPPI_send_WW(proc, (void *)_NI_set_channel_size, id, bytes);
+    TPPI_sleep(&set_channel_size_flag);
+}
+
+volatile int reset_channel_notify_flag = 0;
+
+void _NI_reset_channel_notify()
+{
+    TPPI_recv_W(); /* pop the first word */
+    TPPI_wakeup(&reset_channel_notify_flag);
+}
+
+#define DUMMY 	99
+
+void reset_channel_notify(int proc)
+{
+    TPPI_send_W(proc, (void *)_NI_reset_channel_notify, DUMMY);
+}
+
+void ReduceForces(struct force_val_t *f, 
+		  INPARAMS struct force_val_t *f_local, 
+		  int num_particles)
+{
+    int i, j, trips, recv_bytes;
+    int recv_low_vertex, recv_high_vertex, recv_proc;
+    unsigned start_time, end_time;
+    
+#ifdef TIME
+    CLOCK(start_time);
+#endif
+    
+#define recv_num_vertex (recv_high_vertex - recv_low_vertex + 1)
+    
+    recv_low_vertex  = low_node[prev_proc];
+    recv_high_vertex = high_node[prev_proc];
+    
+    recv_bytes = (high_node[(prev_proc+1)%XX_NUM_NODES] -
+		  low_node[(prev_proc+1)%XX_NUM_NODES] + 1) *
+		    sizeof(struct force_val_t);
+    
+    assert(recv_bytes * sizeof(struct force_val_t) <= TPPI_MAX_CHANNEL_BYTES);
+    
+    TPPI_set_channel_dst(prev_proc, recv_channel_id, (void *)recv_buffer, 
+			 recv_bytes, (void *)dummyfn);
+    
+    BARRIER(,XX_NUM_NODES);
+    
+    for (trips = 0, recv_proc = (prev_proc+1) % XX_NUM_NODES;
+	 trips < XX_NUM_NODES-1; 
+	 trips++, recv_proc = (recv_proc + 1) % XX_NUM_NODES)
+      {
+	  TPPI_channel_send(next_proc, send_channel_id, 
+			    (int *)(&f_local[recv_low_vertex]),
+			    recv_num_vertex * sizeof(struct force_val_t));
+	  
+#ifndef TZERO
+	  /* should be fixed in tzero */
+	  TPPI_sleep(&send_done_flag);
+#endif
+	  
+	  /* receive a piece */
+	  while (!TPPI_is_channel_ready(prev_proc, recv_channel_id));
+	  
+	  /* calculate receiving vertices */
+	  recv_low_vertex  = low_node[recv_proc];
+	  recv_high_vertex = high_node[recv_proc];
+	  
+	  assert(recv_low_vertex <= num_particles);
+	  assert(recv_high_vertex <= num_particles);
+	  
+	  /* update global memory, not necessary in this application though */
+	  if (trips != XX_NUM_NODES - 2) 
+	    {
+		for (i=0,j=recv_low_vertex; i < recv_num_vertex; i++, j++)
+		  {
+		      f_local[j].x += recv_buffer[i].x;
+		      f_local[j].y += recv_buffer[i].y;
+		      f_local[j].z += recv_buffer[i].z;
+		  }
+	    }
+	  else /* update global memory in last hop */
+	    {
+		for (i=0,j=recv_low_vertex; i < recv_num_vertex; i++, j++)
+		  {
+		      f[j].x = f_local[j].x + recv_buffer[i].x;
+		      f[j].y = f_local[j].y + recv_buffer[i].y;
+		      f[j].z = f_local[j].z + recv_buffer[i].z;
+		  }	  
+	    }
+	  
+	  BARRIER(,XX_NUM_NODES);
+	  
+	  recv_bytes = ((high_node[(recv_proc + 1) % XX_NUM_NODES] - 
+			 low_node[(recv_proc + 1) % XX_NUM_NODES] + 1)
+			* sizeof(struct force_val_t));
+	  
+	  assert(recv_bytes <= TPPI_MAX_CHANNEL_BYTES);
+	  
+	  TPPI_set_channel_dst(prev_proc, recv_channel_id, (void *)recv_buffer, 
+			       recv_bytes, (void *)dummyfn);
+	  
+	  /* reset receiving channel for future use and send ack to sender */
+	  TPPI_reset_channel(prev_proc, recv_channel_id);
+	  
+	  reset_channel_notify(prev_proc);
+	  
+	  TPPI_sleep(&reset_channel_notify_flag);
+      }
+    
+    BARRIER(,XX_NUM_NODES);
+#ifdef TIME
+    CLOCK(end_time);
+    tot_reduce += end_time - start_time;
+#endif
+}
+
+#else
+
+/* shared memory reduction */
+void ReduceForces(f, INPARAMS f_local, num_particles)
+     struct force_val_t *f, *f_local;
+     int num_particles;
+{
+    int i, j, k, low_vertex, high_vertex;
+    unsigned start_time, end_time;
+    
+#ifdef TIME
+    CLOCK(start_time);
+#endif
+    
+    for (k=0, j = (XX_NODE_NUMBER+1) % XX_NUM_NODES;
+	 k < XX_NUM_NODES;
+	 k++, j = (j+1) % XX_NUM_NODES)
+      {
+	  low_vertex  = low_node[j];
+	  high_vertex = high_node[j];
+	  
+	  for (i=low_vertex; i<=high_vertex; i++)
+	    if (f_local[i].x != 0 && f_local[i].y != 0 && f_local[i].z != 0)
+	      {
+		  f[i].x += f_local[i].x;
+		  f[i].y += f_local[i].y;
+		  f[i].z += f_local[i].z;
+	      }
+	  
+	  BARRIER(,XX_NUM_NODES);
+      }
+    
+#ifdef TIME
+    CLOCK(end_time);
+    tot_reduce += end_time - start_time;
+#endif
+    
+}
+#endif BULK_REDUCTION        
+

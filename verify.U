@@ -1,0 +1,131 @@
+/* Copyright (c) 1995 by Mark Hill, James Larus, Joel Saltz, andfor 
+ * the Wisconsin Wind Tunnel Project and Joel Saltz for the High Performance 
+ * Software Laboratory, University of Maryland, College Park.
+ *
+ * ALL RIGHTS RESERVED.
+ *
+ * This software is furnished under a license and may be used and
+ * copied only in accordance with the terms of such license and the
+ * inclusion of the above copyright notice.  This software or any other
+ * copies thereof or any derivative works may not be provided or
+ * otherwise made available to any other persons.  Title to and ownership
+ * of the software is retained by Mark Hill, James Larus, Joel Saltz, and
+ * David Wood.  Any use of this software must include the above copyright notice.
+ *
+ * THIS SOFTWARE IS PROVIDED "AS IS".  THE LICENSOR MAKES NO
+ * WARRANTIES ABOUT ITS CORRECTNESS OR PERFORMANCE.
+ *
+ * Shamik Sharma generated the sequential version in C. 
+ * Shubhendu Mukherjee (Shubu) parallelized moldyn on Tempest. 
+ */
+/*
+|| Joint project between the Wisconsin Wind Tunnel at the University of Wisconsin, 
+|| Madison and Joel Saltz's research group at the University of Maryland, College 
+|| Park.  
+||
+|| Participants: Shubu Mukherjee (*) and Shamik Sharma (!).
+||               Mark Hill (*), Jim Larus(*), Anne Rogers (%), Joel Saltz (!).
+||		 
+||		 (*) University of Wisconsin-Madison
+||		 (!) University of Maryland, College Park
+||		 (%) Princeton University
+*/
+
+#define EXTERN extern
+#include "moldyn.h"
+
+double smalloutput[] = {1473.6567, -13442.9131, -11969.2564, 0.4799, -4.1291, 0.1601, 28.4};
+double largeoutput[] = {6310.8539, -57667.9161, -51357.0622, 0.4788, -4.1307, 0.1603, 28.1};
+
+int equal(double a, double b, double error)
+{
+    if (abs(a - b) > error)
+      return 0;
+    else
+      return 1;
+}
+
+void verification_failure(char *s)
+{ 
+    printf("\nERROR: verification failed on %s\n", s);
+    return; 
+}
+
+void verify(tstep, ek, tot_epot, etot, temp, pres, avgvel, rp)
+     int tstep;
+     double ek, tot_epot, etot, temp, pres, avgvel, rp;
+{
+    int failed = 0;
+    double *output = NULL;
+    
+    if (tstep != 30)
+      {
+	  printf("\n\nNo verification test available for %d iterations.\n\n", 
+		 tstep);
+	  return;
+      }
+    
+    if (boxsize == 4)
+      {
+	  printf("No verification test available for this data set\n");
+	  return;
+      }
+    
+    if (boxsize == 8)
+      {
+	  output = smalloutput;
+      }
+    else if (boxsize == 13)
+      {
+	  output = largeoutput;
+      }
+    
+    if (!equal(ek, output[0], 0.01))
+      {
+	  verification_failure("ek");
+	  failed = 1;
+      }
+    
+    if (!equal(tot_epot, output[1], 0.01))
+      {
+	  verification_failure("tot_epot");
+	  failed = 1;
+      }
+    
+    if (!equal(etot, output[2], 0.01))
+      {
+	  verification_failure("etot");
+	  failed = 1;
+      }
+    
+    if (!equal(temp, output[3], 0.01))
+      {
+	  verification_failure("temp"); 
+	  failed = 1;
+      }
+    
+    if (!equal(pres, output[4], 0.01))
+      {
+	  verification_failure("pres");
+	  failed = 1;
+      }
+    
+    if (!equal(avgvel, output[5], 0.01))
+      {
+	  verification_failure("avgvel");
+	  failed = 1;
+      }
+    
+    if (!equal(rp, output[6], 0.1))
+      {
+	  verification_failure("rp");
+	  failed = 1;
+      }
+    
+    if (failed)
+      {
+	  fatal_error("ERRROR: Verification test failed.  Incorrect ouput\n");
+      }
+    if (!failed)
+      printf("\n\nSuccessful run.  Output is correct.\n\n");
+}

@@ -1,0 +1,302 @@
+/* Copyright (c) 1995 by Mark Hill, James Larus, Joel Saltz, andfor 
+ * the Wisconsin Wind Tunnel Project and Joel Saltz for the High Performance 
+ * Software Laboratory, University of Maryland, College Park.
+ *
+ * ALL RIGHTS RESERVED.
+ *
+ * This software is furnished under a license and may be used and
+ * copied only in accordance with the terms of such license and the
+ * inclusion of the above copyright notice.  This software or any other
+ * copies thereof or any derivative works may not be provided or
+ * otherwise made available to any other persons.  Title to and ownership
+ * of the software is retained by Mark Hill, James Larus, Joel Saltz, and
+ * David Wood.  Any use of this software must include the above copyright notice.
+ *
+ * THIS SOFTWARE IS PROVIDED "AS IS".  THE LICENSOR MAKES NO
+ * WARRANTIES ABOUT ITS CORRECTNESS OR PERFORMANCE.
+ *
+ * Shamik Sharma generated the sequential version in C. 
+ * Shubhendu Mukherjee (Shubu) parallelized moldyn on Tempest. 
+ */
+
+
+#define EXTERN extern
+#include "moldyn.h"
+
+#ifdef COORD_BISEC
+
+#define 	GREAT		1
+#define 	LESS		-1
+#define 	EQUAL		0
+
+#define		NDIM		3	/* 3-dimensional space */
+#define		X		0	/* x dimension */
+#define		Y		1	/* y dimension */
+#define 	Z		2
+
+/* variables and functions for sorting */
+/* static	int	*intlist; */		/* integer array */
+static	double	*doublelist;		/* double array */
+static	int	comparedouble(int *, int *);	/* compare double numbers */
+static	int	compareint(int *, int *);	/* compare integer numbers */
+
+/* void qsort(char *, int, int, int(*)());  */
+/* 
+ * CoorBisec()
+ *
+ * Recursive Coordinate Bisection (sequential)
+ */
+void CoorBisec(level, proclevel, order, proc, ndata, x, y, z)
+int	level;	/* level of recursion */
+int 	proclevel; /* level upto which processors should be assigned */
+int	*order;	/* the indexes of elements */
+int	*proc;	/* processor indexes of elements */
+int	ndata;	/* number of elements */
+double *x, *y, *z;  /* coordinates */
+{
+    int	  i, j, k;
+    int	  dimension;			/* dimenstion of partitioning */
+    int	  nopart;			/* number of partitions */
+    int	  totalpart;			/* total number of partitons */
+    int	  *ptr;				/* start position of each partition */
+    
+    /* initialization */
+    nopart = 1;				/* current number of partitions */
+    totalpart = 1 << level;
+    ptr   = (int *) local_malloc_z((totalpart+1) * sizeof(int));
+    ptr[0] = 0;				/* first element */
+    ptr[nopart] = ndata;
+    for (i = 0; i < ndata; i++) 
+      proc[i] = 0;
+    
+    /* perform partition */
+    for (i = 0; i < level; i++, nopart<<=1) 
+      {
+	  dimension = i % NDIM;
+	  switch (dimension) 
+	    {
+	       case	X:
+		doublelist = x;
+		break;
+	       case	Y:
+		doublelist = y;
+		break;
+	       case    Z:
+		doublelist = z;
+		break;
+	    }
+	  
+	  /* partition each group */
+	  for (j = nopart; j; j--) 
+	    {
+		/* sort the group */
+		qsort ((char *)(&order[ptr[j-1]]), ptr[j]-ptr[j-1], 
+		       sizeof(int), (void *)comparedouble);
+
+		/* divide the group into two subgroups by the median */
+		ptr[j<<1] = ptr[j];
+		ptr[(j<<1)-1] = (ptr[j]+ptr[j-1]) >> 1;
+		
+		if (i < proclevel)
+		  {
+		      /* assign elements to processors */
+		      for (k = ptr[j-1]; k < ptr[j]; k++)
+			proc[order[k]] <<= 1;
+
+		      for (k = ptr[(j<<1)-1]; k < ptr[j<<1]; k++)
+			proc[order[k]]++;
+		  }
+	    }
+      }
+}
+
+/* function for comparing double numbers */
+static	int comparedouble(int *a, int *b)
+{
+    if (doublelist[*a] > doublelist[*b])
+    {
+	return (GREAT);
+    }
+    if (doublelist[*a] < doublelist[*b])
+    {
+	return (LESS);
+    }
+    if (*a > *b)
+    {
+	return (GREAT);
+    }
+    if (*a < *b)
+    {
+	return (LESS);
+    }
+    
+    return (EQUAL);
+}
+
+static int compareint (int *a, int *b)
+{
+    return (*a - *b);
+}
+
+/*
+ * Return position of most significant bit set in 'n'.
+ * Bit 32 is MSB, bit 1 is LSB, returns 0 if n == 0.
+ */
+int msb_position(unsigned n)
+{
+    int p = 1;
+    unsigned orig_n = n;
+    
+    if (n == 0)
+    {
+	return 0;
+    }
+    
+    if (n & 0xffff0000) { p += 16; n >>= 16; }
+    if (n & 0x0000ff00)	{ p +=  8; n >>=  8; }
+    if (n & 0x000000f0) { p +=  4; n >>=  4; }
+    if (n & 0x0000000c) { p +=  2; n >>=  2; }
+    if (n & 0x00000002) { p +=  1; }
+    
+    assert( (orig_n >> (p-1)) == 1 );
+    return p;
+}
+
+
+/*
+ * log base 2 of argument... actually returns floor(log2(n)).
+ */
+int floor_log2(unsigned n)
+{
+    assert(n != 0);
+    return msb_position(n) - 1;
+}
+
+
+/* Return 1 if argument is an exact power of two, 0 otherwise. */
+int is_power_of_two(int v)
+{
+    int i;
+    
+    for (i = 1; i >= 0; i <<= 1)
+      if (v == i)
+	return 1;
+    
+    return 0;
+}
+
+/* 
+ * I initialize the velocity and force arrays and then shuffle them 
+ * just to have the code clean.  Since we are timing this part of the 
+ * code, it does not matter.
+ */
+void coordinate_bisection(int num, struct val_t *coord, 
+			  struct val_t *vel, struct force_val_t *force)
+{
+    int i, levels, *ndx, *node_to_proc;
+    struct val_t *tmp_coord;
+    struct val_t *tmp_vel;
+    struct force_val_t *tmp_force;
+    double *x, *y, *z;
+
+    printf("Performing recursive coordinate bisection...\n");
+    fflush(stdout);    
+
+    assert(num > 0);
+
+    if (!is_power_of_two(XX_NUM_NODES))
+      {
+	  fatal_error("This RCB partitioner works only with 2^n processors\n");
+      }
+
+    ndx = (int *)local_malloc(sizeof(int) * num);
+    node_to_proc = (int *)local_malloc(sizeof(int) * num);
+
+    for (i = 0; i < num; i++) 
+      ndx[i] = i;
+    
+    levels = floor_log2(XX_NUM_NODES);
+
+    /* 
+     * The x, y, and z arrays are not strictly necessary.  However, I 
+     * am too lazy right now to change the RCB partitioner to accept 
+     * directly the coord array as input.  We are not timing this portion 
+     * of the code, so who cares ...  		-Shubu /SSM/
+     */
+    x = (double *)local_malloc(sizeof(double) * num);
+    y = (double *)local_malloc(sizeof(double) * num);
+    z = (double *)local_malloc(sizeof(double) * num);
+
+    for (i = 0; i < num; i++)
+      {
+	  x[i] = coord[i].x;
+	  y[i] = coord[i].y;
+	  z[i] = coord[i].z;
+      }
+
+    CoorBisec(levels, levels, ndx, node_to_proc, num, x, y, z);
+
+#ifndef FIRST_COORD_BISEC
+    for (i = 0; i < XX_NUM_NODES; i++)
+    {
+	int start = low_index(num_particles, i);
+	int end   = high_index(num_particles, i);
+	
+	CoorBisec(8, 8, &(ndx[start]), dummy, (end - start + 1), 
+		  x, y, z);
+    }
+#endif
+
+    free(x); free(y); free(z);
+
+    /* fix coordinate array */
+    tmp_coord = (struct val_t *)local_malloc(sizeof(struct val_t) * num);
+
+    for (i = 0; i < num; i++)
+      {	
+	  tmp_coord[i] = coord[i];
+      }
+
+    for (i = 0; i < num; i++)
+      {
+	  coord[i] = tmp_coord[ndx[i]];
+      }
+    
+    free(tmp_coord);
+
+    /* fix vel array */
+    tmp_vel = (struct val_t *)local_malloc(sizeof(struct val_t) * num);
+
+    for (i = 0; i < num; i++)
+      {	
+	  tmp_vel[i] = vel[i];
+      }
+
+    for (i = 0; i < num; i++)
+      {
+	  vel[i] = tmp_vel[ndx[i]];
+      }
+    
+    free(tmp_vel);
+
+
+    /* fix force array */
+    tmp_force = (struct force_val_t *)local_malloc(sizeof(struct force_val_t) 
+						   * num);
+
+    for (i = 0; i < num; i++)
+      {	
+	  tmp_force[i] = force[i];
+      }
+
+    for (i = 0; i < num; i++)
+      {
+	  force[i] = tmp_force[ndx[i]];
+      }
+    
+    free(tmp_force);
+
+    free(ndx);
+    free(node_to_proc);
+}
+#endif

@@ -1,0 +1,38 @@
+# Copyright (c) 1992-93 by Mark Hill, James Larus, and David Wood for
+# the Wisconsin Wind Tunnel Project.
+#
+# ALL RIGHTS RESERVED.
+#
+# This software is furnished under a license and may be used and
+# copied only in accordance with the terms of such license and the
+# inclusion of the above copyright notice.  This software or any other
+# copies thereof or any derivative works may not be provided or
+# otherwise made available to any other persons.  Title to and ownership
+# of the software is retained by Mark Hill, James Larus, and David Wood.
+# Any use of this software must include the above copyright notice.
+#
+# THIS SOFTWARE IS PROVIDED "AS IS".  THE LICENSOR MAKES NO
+# WARRANTIES ABOUT ITS CORRECTNESS OR PERFORMANCE.
+
+# The following commented line is accepted by DJM
+#JSUB -nproc 32 -cputime 5min -mem 400mb
+
+# In the CS dept. in Wisconsin, set WWT_ROOT to /p/wwt
+
+/bin/rm -f out
+
+# small
+# moldyn -le 4 30   32000 > out
+
+# medium
+# moldyn 8 30  320000 > out
+
+# large
+# moldyn 13 30 1600000 > out
+
+# to get the correct number of home pages for medium data set
+# moldyn -le 8 30  254000 > out
+
+# to get the correct number of home pages for large data set
+moldyn 13 30 1100000 > out
+

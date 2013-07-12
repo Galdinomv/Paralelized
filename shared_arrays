@@ -1,0 +1,61 @@
+#  Copyright (c) 1995 by Mark Hill, James Larus, and David Wood for 
+#  the Wisconsin Wind Tunnel Project and Joel Saltz for the High Performance 
+#  Software Laboratory, University of Maryland, College Park.
+# 
+#  ALL RIGHTS RESERVED.
+# 
+#  This software is furnished under a license and may be used and
+#  copied only in accordance with the terms of such license and the
+#  inclusion of the above copyright notice.  This software or any other
+#  copies thereof or any derivative works may not be provided or
+#  otherwise made available to any other persons.  Title to and ownership
+#  of the software is retained by Mark Hill, James Larus, and David Wood.
+#  Any use of this software must include the above copyright notice.
+# 
+#  THIS SOFTWARE IS PROVIDED "AS IS".  THE LICENSOR MAKES NO
+#  WARRANTIES ABOUT ITS CORRECTNESS OR PERFORMANCE.
+# 
+#  Shamik Sharma generated the sequential version in C. 
+#  Shubhendu Mukherjee (Shubu) parallelized moldyn on Tempest. 
+#
+
+
+large data set: number of particles    = 8788 (num_particles)
+	        number of interactions = (1089712,1086170) (ninter)
+
+Note:- the names of variables do not exactly correspond with the names of 
+       arrays here, but are close.
+
+LOCKS not included
+
+Set ninter = 1,100,000
+    XX_NUM_NODES = 32
+    No padding assumed
+
+dbl = double
+
+Name 			Type		Expn			Input	MB
+-----------------------------------------------------------------------------
+inter (interactions)    RW		ninter * 2 * int	large	8.80
+			(mostly RO)
+tot_interact		RW		XX_NUM_NODES * int	large   0.00
+inter_index		RO		XX_NUM_NODES * int	large	0.00
+
+coord			RW		num_particles * 3 * dbl large   0.21
+force 			RW		num_particles * 3 * dbl large   0.21
+vel			RW		num_particles * 3 * dbl large   0.21
+
+global			RW		int			large   0.00
+vir			RW		XX_NUM_NODES * double	large	0.00
+epot			RW		XX_NUM_NODES * double	large   0.00
+-----------------------------------------------------------------------------
+Total									9.43
+
+Total # shared arrays = 9
+Number of arrays with special protocol = 1 (11.11%)
+
+Total MB in shared memory = 9.43 (8.8 MB from interaction list under 
+				  regular stache protocol)
+Total MB w/ special protocol = 0.21 (2.2%)
+
+
